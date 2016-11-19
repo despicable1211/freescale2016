@@ -42,8 +42,8 @@ uint16 servo_PID(void)
             last_error[n] = last_error[n-1];
             }
               last_error[0] = error;
-      sum_kp = last_error[0]-last_error[1];
-      sum_ki = last_error[0];
+      sum_kp = last_error[0];
+      sum_ki = last_error[0]-last_error[1];
       sum_kd = last_error[0]-2*last_error[1]+last_error[2];
 
       abs_error = alsolute_value(error);                   //打角偏差取绝对值

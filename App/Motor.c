@@ -65,8 +65,8 @@ void motor_PID(int desired_value, int actual_value)
         motor_error[i] = motor_error[i-1];
                                                  
      motor_error[0] = desired_value - actual_value;
-     sum_P = motor_P * (motor_error[0] - motor_error[1]);
-     sum_I = motor_I * motor_error[0];
+     sum_P = motor_P * motor_error[0];
+     sum_I = motor_I * (motor_error[0] - motor_error[1]);
      sum_D = motor_D * (motor_error[0]-2*motor_error[1]+motor_error[2]);
      motor_pwm += (sum_P + sum_I + sum_D); 
      
