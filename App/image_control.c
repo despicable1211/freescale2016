@@ -1,5 +1,5 @@
-
 #include "image_control.h"
+#include "main.h"
 
 #define	IMG_BLACK		0
 #define	IMG_WHITE		255
@@ -8,28 +8,22 @@
 #define FIND_RIGHT		2
 #define CENTER_POINT	IMAGE_W/2
 
-int8 centerLine[IMAGE_H+1] = {0};			// 最后一个元素用来记录转向点对应的行数
-int8 leftLine[IMAGE_H] = {0};
-int8 rightLine[IMAGE_H] = {0};
-extern uint8 *center;
-extern uint8 Motor_stop_flag;
-uint8 Left_point[59 ];
-uint8 Right_point[59 ];
-uint8 midline[59];
-uint8  Flag[10]={0};  
-int8   error;                                           //偏差
-volatile uint8 leftFindFlag;				// 用来标记左黑线是否找到
-volatile uint8 rightFindFlag;				// 用来标记右黑线是否找到
+int16 centerLine[IMAGE_H+1] = {0};			// 最后一个元素用来记录转向点对应的行数
+int16 leftLine[IMAGE_H] = {0};
+int16 rightLine[IMAGE_H] = {0};
 
-volatile int8 leftCount;
-volatile int8 rightCount;
-volatile int8 findLine;
+static uint8 leftFindFlag;					// 用来标记左黑线是否找到
+static uint8 rightFindFlag;					// 用来标记右黑线是否找到
 
-int8 createPoint(int type, int line);
+static int16 leftCount;
+static int16 rightCount;
+static int16 findLine;
 
-uint8 *findCenterLine(uint8 (* image)[IMAGE_W])
+int16 createPoint(int type, int line);
+
+int16 *findCenterLine(uint8 (* image)[IMAGE_W])
 {
-	int8 temp;
+	int8 temp, tmp;
 	// 前十行从中间往两边查找
 	for(findLine = IMAGE_H-1; findLine > IMAGE_H-11; findLine--)
 	{
@@ -65,8 +59,6 @@ uint8 *findCenterLine(uint8 (* image)[IMAGE_W])
 		if(rightFindFlag == 0)	rightLine[findLine] = IMAGE_W-1;
 		// 对中线进行赋值
 		centerLine[findLine] = (leftLine[findLine]+rightLine[findLine])/2;
-		leftFindFlag = 0;
-		rightFindFlag = 0;
 	}
 	
 	// 十行后根据前面行位置查找黑线
@@ -78,7 +70,7 @@ uint8 *findCenterLine(uint8 (* image)[IMAGE_W])
 		leftCount = createPoint(FIND_LEFT, findLine);
 		rightCount = createPoint(FIND_RIGHT, findLine);
 		//leftCount = (2 * leftLine[findLine+1] - leftLine[findLine+2]);
-		//rightCount =  (2 * rightLine[findLine+1] - rightLine[findLine+2]);
+		//rightCount = (2 * rightLine[findLine+1] - rightLine[findLine+2]);
 		
 		/* 在预测点的左右 FIND_COUNT 个点查找黑线位置 */
 		// 寻找左黑线
@@ -162,7 +154,7 @@ uint8 *findCenterLine(uint8 (* image)[IMAGE_W])
 			// 根据右黑线的偏移量来确定中线
 			temp = centerLine[findLine+1] + (rightLine[findLine] - rightLine[findLine+1]);
 			// 根据最小二乘法补全中线
-			// temp = createPoint(FIND_CENTER, findLine);
+			//temp = createPoint(FIND_CENTER, findLine);
 			if(temp <= 0)
 			{
 				// 中线超出范围则跳出循环，记录该行为转向行
@@ -178,7 +170,7 @@ uint8 *findCenterLine(uint8 (* image)[IMAGE_W])
 			// 根据左黑线的偏移量来确定中线
 			temp = centerLine[findLine+1] + (leftLine[findLine] - leftLine[findLine+1]);
 			// 根据最小二乘法补全中线
-			// temp = createPoint(FIND_CENTER, findLine);
+			//temp = createPoint(FIND_CENTER, findLine);
 			if(temp >= IMAGE_W-1)
 			{
 				// 中线超出范围则跳出循环，记录该行为转向行
@@ -194,7 +186,7 @@ uint8 *findCenterLine(uint8 (* image)[IMAGE_W])
 			// 根据最小二乘法补全中线
 			temp = createPoint(FIND_CENTER, findLine);
 			// 根据中线偏移量补全中线
-			// temp = centerLine[findLine+1] + (rightLine[findLine] - rightLine[findLine+1]);
+			//temp = centerLine[findLine+1] + (rightLine[findLine] - rightLine[findLine+1]);
 			if(temp <= 0)
 			{
 				// 中线超出范围则跳出循环，记录该行为转向行
@@ -212,9 +204,6 @@ uint8 *findCenterLine(uint8 (* image)[IMAGE_W])
 		}		
 #endif
 		
-		/* 判断十字弯 */
-		
-		
 	}
 	if(findLine<0 && centerLine[0]<0)
 		centerLine[0] = 0;
@@ -222,7 +211,43 @@ uint8 *findCenterLine(uint8 (* image)[IMAGE_W])
 		centerLine[0] = IMAGE_W-1;
 	
 	// 最后一个元素用来记录转向行
-	centerLine[IMAGE_H] = (findLine < 0) ? 0 : findLine;	
+	centerLine[IMAGE_H] = (findLine < 0) ? 0 : findLine;
+	
+/* 检查停车线 */
+#ifdef RELEASE	
+	if(centerLine[IMAGE_H] == 0 
+	&& leftLine[0] >= 23 
+	&& rightLine[0] < IMAGE_W-23
+	&& (centerLine[0]-centerLine[29] <= 3 || centerLine[0]-centerLine[29] >= -3))
+	{
+		for(temp = IMAGE_H-1; temp >= centerLine[IMAGE_H]; temp--)
+		{
+			if(carParams.stopCarFlag != STOP_LINE
+			&& image[temp][(leftLine[temp]+centerLine[temp])/2] == IMG_BLACK
+			&& image[temp][(rightLine[temp]+centerLine[temp])/2] == IMG_BLACK
+			&& image[temp][(leftLine[temp]+centerLine[temp])/2-1] == IMG_BLACK
+			&& image[temp][(leftLine[temp]+centerLine[temp])/2+1] == IMG_BLACK
+			&& image[temp][(rightLine[temp]+centerLine[temp])/2-1] == IMG_BLACK
+			&& image[temp][(rightLine[temp]+centerLine[temp])/2+1] == IMG_BLACK
+			//&& image[temp][leftLine[temp]+1] == IMG_WHITE
+			//&& image[temp][rightLine[temp]-1] == IMG_WHITE
+			&& carParams.carRunTime > 3000/ENCODE_TIME)		// 小车起跑超过三秒则为停车线
+			{
+				for(tmp = (leftLine[temp]+centerLine[temp])/2+1; (rightLine[temp]+centerLine[temp])/2-1; tmp++)
+				{
+					if(image[temp][tmp] == IMG_WHITE && image[temp][tmp+2] == IMG_WHITE)
+					{
+						carParams.stopCarFlag = STOP_LINE;
+						goto STOP_LINE_PASS;
+					}
+				}
+			}
+		}
+	STOP_LINE_PASS:
+		if(carParams.stopCarFlag == STOP_LINE && carParams.passStopLine != PASS_STOP_LINE && temp < 0)
+			carParams.passStopLine = PASS_STOP_LINE;		// 小车已越过停车线
+	}
+#endif
 	
 	/*
 	// 在 TFT 上绘制出 3 线
@@ -234,21 +259,22 @@ uint8 *findCenterLine(uint8 (* image)[IMAGE_W])
 	}
 	*/
 	
-	return (uint8 *)centerLine;
+	return (int16 *)centerLine;
 }
 
 /* 利用最小二乘法生成需要补全的点 */
-int8 createPoint(int type, int line)
+int16 createPoint(int type, int line)
 {
-	int8 *linePointer;
-	uint8 tmp = 0;
+	int16 *linePointer;
+	int8 tmp = 0;
 	double sumX = 0;
 	double sumY = 0;
 	double averageX = 0;
 	double averageY = 0;
 	double sumUp = 0;
 	double sumDown = 0;
-	double A, B;
+	double parameterA;
+	double parameterB;
 	
 	if(type == FIND_LEFT)
 		linePointer = &leftLine[line];
@@ -257,8 +283,8 @@ int8 createPoint(int type, int line)
 	else
 		linePointer = &centerLine[line];
 	
-	// 取邻近的十个点进行拟合
-	while(++tmp <= 10)
+	// 取邻近的 POINT_COUNT 个点进行拟合
+	while(++tmp <= POINT_COUNT)
 	{
 		sumX += (line+tmp);
 		sumY += linePointer[tmp];
@@ -273,59 +299,9 @@ int8 createPoint(int type, int line)
 	} while(--tmp > 0);
 	
 	if(sumDown == 0)
-		B = 0;
+		parameterB = 0;
 	else
-		B = sumUp/sumDown;
-	A = averageY-B*averageX;
-	return (int8)(A+B*line+0.5);
-}
-/*******************************
-作用：提取偏差值
-*******************************/
-int8 get_error()
-{
-  int8 midle=0,offset=0,midlerow=0;
-  if(center[60]==0)                             //中线到图像顶部取偏差
-  {
-    midlerow=(center[59]+center[0])/2;
-    if(((center[0]-center[midlerow])>0&&(center[59]-center[midlerow])>0)||((center[0]-center[midlerow])<0&&(center[59]-center[midlerow])<0))
-    {
-       offset=(center[0]-39)+(center[30]-39);    //取3点算偏差，顶部，底部，中间
-       error=-(center[59]+offset-39);
-    }
-    else
-    {
-      offset=center[0]-39;    //取3点算偏差，顶部，底部，中间
-      error=-(center[59]+offset-39);
-    }
-  }
-  else                                          //中线不到图像顶部，偏向右时的偏差
-  {
-    if(center[center[60]]>39)
-    {
-      error=-(39+center[60]);                   //根据最后结束行算偏差
-    }
-    else                                        //中线不到图像顶部，偏向左边时的偏差
-    {
-      error=-(-39-center[60]);                  //根据最后结束行算偏差
-    }
-  }
-    return 0;
-}
-//停车检测
-void cartstopflag(int x)
-{
-  int r,l,blackflag=80;
-  for(r=20;r<x;r++)
-  {
-    for(l=center[r];l<60;l++)
-    {
-      if(img[r][l]==0xff) blackflag--;
-    }
-    for(l=center[r];l>0;l--)
-    {
-      if(img[r][l]==0xff) blackflag--;
-    }
-  }
-  if(blackflag<20) Motor_stop_flag=1;
+		parameterB = sumUp/sumDown;
+	parameterA = averageY-parameterB*averageX;
+	return (int16)(parameterA+parameterB*line+0.5);
 }
